@@ -257,7 +257,7 @@ class InvoiceDetailsStream(PrecoroStream):
             "dataDocumentCustomFields", th.CustomType({"type": ["object", "array"]})
         ),
         th.Property("attachments", th.CustomType({"type": ["object", "array"]})),
-        th.Property("relatedOcrAttachment", th.CustomType({"type": ["object", "array", "null"]})),
+        th.Property("relatedOcrAttachment", th.CustomType({"type": ["object", "array"]})),
         th.Property("allocatedInvoice", th.CustomType({"type": ["object", "array"]})),
         th.Property("contracts", th.CustomType({"type": ["object", "array"]})),
         th.Property("isBudgetOverLimit", th.BooleanType),
