@@ -4,6 +4,9 @@ import requests
 import json
 import hmac
 import hashlib
+import csv
+import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List, Iterable
 import time
@@ -193,12 +196,64 @@ class AccountSetupMixin:
 class ExternalIdTwoPassMixin:
     """Mixin for streams that fetch incremental records first, then records without externalId; yields deduplicated results."""
 
+    _QUARANTINE_FIELDS = ["idn", "issueDate", "dueDate", "supplierId", "currency", "items"]
+    _DAILY_RETRY_HOURS = 24
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.config.get("fetch_unexported", False):
             start_date = self.config.get("start_date")
             if not start_date or start_date == "2000-01-01T00:00:00Z":
                 raise Exception("Please set start_date param if you want to use fetch_unexported")
+
+    def _snapshot_dir(self) -> str:
+        return os.path.join(os.environ.get("ROOT_DIR", "."), "snapshots")
+
+    def _load_quarantine(self) -> dict:
+        """Returns {str(precoro_id): row_dict} from exact_quarantine.csv."""
+        path = os.path.join(self._snapshot_dir(), "exact_quarantine.csv")
+        if not os.path.exists(path):
+            return {}
+        with open(path, newline="") as f:
+            return {r["precoro_id"]: r for r in csv.DictReader(f)}
+
+    def _load_hashes(self) -> dict:
+        """Returns {str(precoro_id): data_hash} from exact_export_hashes.csv."""
+        path = os.path.join(self._snapshot_dir(), "exact_export_hashes.csv")
+        if not os.path.exists(path):
+            return {}
+        with open(path, newline="") as f:
+            return {r["precoro_id"]: r["data_hash"] for r in csv.DictReader(f)}
+
+    def _save_hashes(self, hashes: dict) -> None:
+        os.makedirs(self._snapshot_dir(), exist_ok=True)
+        path = os.path.join(self._snapshot_dir(), "exact_export_hashes.csv")
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=["precoro_id", "data_hash"])
+            w.writeheader()
+            w.writerows({"precoro_id": k, "data_hash": v} for k, v in hashes.items())
+
+    def _hash_record(self, record: dict) -> str:
+        material = {k: record.get(k) for k in self._QUARANTINE_FIELDS}
+        return hashlib.md5(
+            json.dumps(material, sort_keys=True, default=str).encode()
+        ).hexdigest()
+
+    def _should_skip(self, record: dict, quarantine: dict, hashes: dict) -> bool:
+        """True = skip this record in the second pass (quarantined, data unchanged, retry window not elapsed)."""
+        pid = str(record["id"])
+        if pid not in quarantine:
+            return False
+
+        current_hash = self._hash_record(record)
+        if current_hash != hashes.get(pid, ""):
+            return False  # data changed → retry
+
+        last_failed = datetime.fromisoformat(quarantine[pid]["last_failed"])
+        if datetime.utcnow() - last_failed.replace(tzinfo=None) >= timedelta(hours=self._DAILY_RETRY_HOURS):
+            return False  # daily retry window elapsed
+
+        return True
 
     def request_records(self, context: Optional[dict]) -> Iterable[dict]:
         seen_ids = set()
@@ -210,15 +265,25 @@ class ExternalIdTwoPassMixin:
         if not self.config.get("fetch_unexported", False):
             return
 
+        quarantine = self._load_quarantine()
+        hashes = self._load_hashes()
+
         self._fetch_no_external_only = True
         self.page = 1
-        pass2_count = 0
+        pass2_count = skipped_count = 0
         try:
             for record in super().request_records(context):
                 if record["id"] in seen_ids:
                     continue
+                if self._should_skip(record, quarantine, hashes):
+                    skipped_count += 1
+                    continue
+                hashes[str(record["id"])] = self._hash_record(record)
                 pass2_count += 1
                 yield record
         finally:
             self._fetch_no_external_only = False
-        self.logger.info(f"{self.name.capitalize()} without externalId: {pass2_count}")
+            self._save_hashes(hashes)
+        self.logger.info(
+            f"{self.name.capitalize()} without externalId: {pass2_count} yielded, {skipped_count} quarantined/skipped"
+        )
