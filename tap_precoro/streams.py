@@ -112,7 +112,6 @@ class InvoicesStream(ExternalIdTwoPassMixin, TransactionsStream):
     primary_keys = ["id"]
     replication_key = "updateDate"
     export_conditions = None
-    fetch_processing_status = True
 
     def get_url_params(self, context, next_page_token):
         params = super().get_url_params(context, next_page_token)
@@ -298,6 +297,9 @@ class SuppliersStream(AccountSetupMixin, ExternalIdTwoPassMixin, PrecoroStream):
     path = "/suppliers"
     primary_keys = ["id"]
     replication_key = "updateDate"
+    # get_url_params below has no _fetch_processing_only handling (suppliers use
+    # externalIntegrated/enable, not integrationStatus[]) - opt out of the pass.
+    fetch_processing_status = False
     schema = th.PropertiesList(
         th.Property("id", th.NumberType),
         th.Property("uniqueCode", th.StringType),
@@ -618,7 +620,6 @@ class CreditNotesStream(ExternalIdTwoPassMixin, TransactionsStream):
     primary_keys = ["id"]
     replication_key = "updateDate"
     export_conditions = None
-    fetch_processing_status = True
 
     def get_statuses_config(self) -> Optional[str]:
         return self.config.get("credit_note_statuses")

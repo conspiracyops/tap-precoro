@@ -193,9 +193,9 @@ class AccountSetupMixin:
 class ExternalIdTwoPassMixin:
     """Mixin for streams that fetch incremental records first, then records without externalId; yields deduplicated results."""
 
-    # Override to True on streams whose get_url_params knows how to fetch
+    # Override to False on streams whose get_url_params doesn't know how to fetch
     # integrationStatus=Processing records (see _fetch_processing_only below).
-    fetch_processing_status = False
+    fetch_processing_status = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
