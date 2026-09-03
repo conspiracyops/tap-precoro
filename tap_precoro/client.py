@@ -193,6 +193,10 @@ class AccountSetupMixin:
 class ExternalIdTwoPassMixin:
     """Mixin for streams that fetch incremental records first, then records without externalId; yields deduplicated results."""
 
+    # Override to True on streams whose get_url_params knows how to fetch
+    # integrationStatus=Processing records (see _fetch_processing_only below).
+    fetch_processing_status = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.config.get("fetch_unexported", False):
@@ -222,7 +226,7 @@ class ExternalIdTwoPassMixin:
                 self._fetch_no_external_only = False
             self.logger.info(f"{self.name.capitalize()} without externalId: {pass2_count}")
 
-        if self.config.get("fetch_processing_status", False):
+        if self.fetch_processing_status:
             self._fetch_processing_only = True
             self.page = 1
             pass3_count = 0

@@ -112,6 +112,7 @@ class InvoicesStream(ExternalIdTwoPassMixin, TransactionsStream):
     primary_keys = ["id"]
     replication_key = "updateDate"
     export_conditions = None
+    fetch_processing_status = True
 
     def get_url_params(self, context, next_page_token):
         params = super().get_url_params(context, next_page_token)
@@ -617,21 +618,28 @@ class CreditNotesStream(ExternalIdTwoPassMixin, TransactionsStream):
     primary_keys = ["id"]
     replication_key = "updateDate"
     export_conditions = None
+    fetch_processing_status = True
 
     def get_statuses_config(self) -> Optional[str]:
         return self.config.get("credit_note_statuses")
 
     def get_url_params(self, context, next_page_token):
         params = super().get_url_params(context, next_page_token)
-        
+
         # Param to fetch only creditNote type from invoices endpoints
         params["logicType[]"] = [1,5]
-        
+
         # Second pass: fetch records without externalId (sent_to_external=0)
         if getattr(self, "_fetch_no_external_only", False):
             start_date = self.config.get("start_date")
             params["modifiedSince"] = start_date
             params["sent_to_external"] = 0
+        # Third pass: fetch records currently in Processing integration status,
+        # regardless of updateDate or workflow status[]
+        if getattr(self, "_fetch_processing_only", False):
+            params.pop("modifiedSince", None)
+            params.pop("status[]", None)
+            params["integrationStatus[]"] = 7
         return params
 
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
