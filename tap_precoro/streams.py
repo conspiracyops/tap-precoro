@@ -120,6 +120,13 @@ class InvoicesStream(ExternalIdTwoPassMixin, TransactionsStream):
             start_date = self.config.get("start_date")
             params["modifiedSince"] = start_date
             params["sent_to_external"] = 0
+        # Third pass: fetch records currently in Processing integration status,
+        # regardless of updateDate (integrationStatus changes don't bump updateDate)
+        # or workflow status[]
+        if getattr(self, "_fetch_processing_only", False):
+            params.pop("modifiedSince", None)
+            params.pop("status[]", None)
+            params["integrationStatus[]"] = 7
         return params
 
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
