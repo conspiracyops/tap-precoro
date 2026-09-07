@@ -442,6 +442,11 @@ class SuppliersStream(AccountSetupMixin, ExternalIdTwoPassMixin, PrecoroStream):
         return payload if isinstance(payload, dict) else {}
 
     def _should_fetch_supplier_details(self) -> bool:
+        # AccountSetup needs supplierLegalEntities (only on the detail endpoint, never on
+        # the list) to route a supplier to the right legal entities - fetch automatically
+        # instead of requiring a second, easy-to-forget config flag.
+        if self.config.get("AccountSetup", {}).get("enabled"):
+            return True
         return bool(self.config.get("fetch_supplier_details", False))
 
     def request_records(self, context: Optional[dict]) -> Iterable[dict]:
