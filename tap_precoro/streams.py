@@ -290,6 +290,138 @@ class InvoiceDetailsStream(PrecoroStream):
     ).to_dict()
 
 
+class PurchaseOrdersStream(ExternalIdTwoPassMixin, TransactionsStream):
+    """Define custom stream."""
+
+    name = "purchase_orders"
+    path = "/purchaseorders"
+    primary_keys = ["id"]
+    replication_key = "updateDate"
+    fetch_processing_status = False
+
+    def get_statuses_config(self) -> Optional[str]:
+        return self.config.get("po_statuses")
+
+    def get_url_params(self, context, next_page_token):
+        params = super().get_url_params(context, next_page_token)
+        # Second pass: fetch records without externalId (sent_to_external=0)
+        if getattr(self, "_fetch_no_external_only", False):
+            start_date = self.config.get("start_date")
+            params["modifiedSince"] = start_date
+            params["sent_to_external"] = 0
+        return params
+
+    def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
+        """Return a context dictionary for child streams."""
+        return {
+            "purchase_order_id": record["idn"],
+        }
+
+
+class PurchaseOrderDetailsStream(PrecoroStream):
+    """Purchase Order details stream, analogous to InvoiceDetailsStream."""
+
+    name = "purchase_orders_details"
+    path = "/purchaseorders/{purchase_order_id}"
+    primary_keys = ["id"]
+    records_jsonpath = "$[*]"
+    replication_key = None
+    parent_stream_type = PurchaseOrdersStream
+    schema = th.PropertiesList(
+        th.Property("id", th.NumberType),
+        th.Property("idn", th.StringType),
+        th.Property("customName", th.StringType),
+        th.Property("createDate", th.DateTimeType),
+        th.Property("updateDate", th.DateTimeType),
+        th.Property("requiredDate", th.DateTimeType),
+        th.Property("approvalDate", th.DateTimeType),
+        th.Property("sum", th.CustomType({"type": ["number", "string"]})),
+        th.Property("netSum", th.CustomType({"type": ["number", "string"]})),
+        th.Property(
+            "sumInCompanyCurrency", th.CustomType({"type": ["number", "string"]})
+        ),
+        th.Property(
+            "netSumInCompanyCurrency", th.CustomType({"type": ["number", "string"]})
+        ),
+        th.Property("currency", th.StringType),
+        th.Property("precisionData", th.CustomType({"type": ["object", "string"]})),
+        th.Property("note", th.StringType),
+        th.Property("exchangeRate", th.CustomType({"type": ["object", "array"]})),
+        th.Property("invoicedSum", th.CustomType({"type": ["number", "string"]})),
+        th.Property(
+            "invoicedSumInCompanyCurrency", th.CustomType({"type": ["number", "string"]})
+        ),
+        th.Property("netInvoicedSum", th.CustomType({"type": ["number", "string"]})),
+        th.Property("isServiceOrder", th.BooleanType),
+        th.Property("status", th.NumberType),
+        th.Property("statusReceiving", th.NumberType),
+        th.Property("statusPayment", th.NumberType),
+        th.Property("statusSending", th.NumberType),
+        th.Property("blanketDetails", th.CustomType({"type": ["object", "string"]})),
+        th.Property("paymentTerm", th.CustomType({"type": ["object", "string"]})),
+        th.Property("company", th.CustomType({"type": ["object", "string"]})),
+        th.Property("prepaymentPercent", th.CustomType({"type": ["number", "string"]})),
+        th.Property(
+            "postpaymentPercent", th.CustomType({"type": ["number", "string"]})
+        ),
+        th.Property("creditPeriodDays", th.NumberType),
+        th.Property("qboId", th.CustomType({"type": ["number", "string"]})),
+        th.Property("netSuiteId", th.CustomType({"type": ["number", "string"]})),
+        th.Property("xeroId", th.CustomType({"type": ["number", "string"]})),
+        th.Property("externalId", th.CustomType({"type": ["number", "string"]})),
+        th.Property(
+            "externalIntegrationLog", th.CustomType({"type": ["object", "array", "string"]})
+        ),
+        th.Property("logicType", th.CustomType({"type": ["number", "string"]})),
+        th.Property("budgetedSum", th.CustomType({"type": ["number", "string"]})),
+        th.Property("usedTaxPercentInBudget", th.StringType),
+        th.Property("poomUrl", th.StringType),
+        th.Property("deliverToName", th.StringType),
+        th.Property("allDocumentCustomFieldOptionsIds", th.StringType),
+        th.Property("sendToSupplier", th.BooleanType),
+        th.Property("isNewSupplierAdded", th.BooleanType),
+        th.Property("punchoutType", th.CustomType({"type": ["number", "string"]})),
+        th.Property("itemsChartSum", th.CustomType({"type": ["number", "string"]})),
+        th.Property("approvingWay", th.CustomType({"type": ["object", "array", "string"]})),
+        th.Property("location", th.CustomType({"type": ["object", "string"]})),
+        th.Property("supplier", th.CustomType({"type": ["object", "string"]})),
+        th.Property("budget", th.CustomType({"type": ["array", "object"]})),
+        th.Property("budgetLine", th.CustomType({"type": ["array", "object"]})),
+        th.Property("legalEntity", th.CustomType({"type": ["array", "object"]})),
+        th.Property("creator", th.CustomType({"type": ["object", "string"]})),
+        th.Property("lastEditor", th.CustomType({"type": ["object", "array", "string"]})),
+        th.Property("approvalSteps", th.CustomType({"type": ["object", "array"]})),
+        th.Property("contracts", th.CustomType({"type": ["object", "array"]})),
+        th.Property(
+            "dataDocumentCustomFields", th.CustomType({"type": ["object", "array"]})
+        ),
+        th.Property("approvalInfo", th.CustomType({"type": ["object", "array"]})),
+        th.Property("frequencyString", th.StringType),
+        th.Property("budgetParts", th.CustomType({"type": ["object", "array"]})),
+        th.Property("entityTemplate", th.CustomType({"type": ["object", "array"]})),
+        th.Property(
+            "relatedPurchaseRequisitions", th.CustomType({"type": ["object", "array"]})
+        ),
+        th.Property("relatedPurchaseRequisitionsCount", th.NumberType),
+        th.Property(
+            "relatedRequestForProposals", th.CustomType({"type": ["object", "array"]})
+        ),
+        th.Property("relatedRequestForProposalsCount", th.NumberType),
+        th.Property("relatedInvoices", th.CustomType({"type": ["object", "array"]})),
+        th.Property("relatedInvoicesCount", th.NumberType),
+        th.Property("relatedReceipts", th.CustomType({"type": ["object", "array"]})),
+        th.Property("relatedReceiptsCount", th.NumberType),
+        th.Property("documentSplits", th.CustomType({"type": ["object", "array"]})),
+        th.Property("items", th.CustomType({"type": ["object", "array"]})),
+        th.Property("taxes", th.CustomType({"type": ["object", "array"]})),
+        th.Property("discounts", th.CustomType({"type": ["object", "array"]})),
+        th.Property("comments", th.CustomType({"type": ["object", "array"]})),
+        th.Property("followers", th.CustomType({"type": ["object", "array"]})),
+        th.Property("attachments", th.CustomType({"type": ["object", "array"]})),
+        th.Property("isBudgetOverLimit", th.BooleanType),
+    ).to_dict()
+
+
 class SuppliersStream(AccountSetupMixin, ExternalIdTwoPassMixin, PrecoroStream):
     """Define custom stream."""
 
