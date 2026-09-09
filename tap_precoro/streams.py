@@ -14,6 +14,10 @@ from tap_precoro.client import PrecoroStream, ExternalIdTwoPassMixin, AccountSet
 # connector (handled by the hotglue-webhook path now), so the polling job must skip it.
 INTEGRATION_STATUS_WAITING_FOR_CONNECTOR = 8
 
+# Invoice/credit-note workflow status "canceled" - a different field from integrationStatus
+# above, both happen to use 8.
+INVOICE_STATUS_CANCELED = 8
+
 
 class TaxesStream(PrecoroStream):
     """Define custom stream."""
@@ -144,6 +148,11 @@ class InvoicesStream(ExternalIdTwoPassMixin, TransactionsStream):
             self.logger.info(
                 f"Invoice with id {row['id']} skipped because integrationStatus is 'Waiting for Connector' (8)"
             )
+            return None
+
+        # Skip canceled invoices (else the processing-status pass re-fetches them forever)
+        if row.get("status") == INVOICE_STATUS_CANCELED:
+            self.logger.info(f"Invoice with id {row['id']} skipped because status=8 (canceled)")
             return None
 
         # Filter by perantIdn: only keep invoices where there are no parentIdn
@@ -795,6 +804,11 @@ class CreditNotesStream(ExternalIdTwoPassMixin, TransactionsStream):
             self.logger.info(
                 f"Credit note with id {row['id']} skipped because integrationStatus is 'Waiting for Connector' (8)"
             )
+            return None
+
+        # Skip canceled credit notes (else the processing-status pass re-fetches them forever)
+        if row.get("status") == INVOICE_STATUS_CANCELED:
+            self.logger.info(f"Credit note with id {row['id']} skipped because status=8 (canceled)")
             return None
 
         if self.export_conditions is None:
