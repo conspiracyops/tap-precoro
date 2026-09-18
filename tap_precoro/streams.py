@@ -18,6 +18,9 @@ INTEGRATION_STATUS_WAITING_FOR_CONNECTOR = 8
 # above, both happen to use 8.
 INVOICE_STATUS_CANCELED = 8
 
+# Workflow statuses allowed through the Processing catch-up pass (approved, partly_paid, paid).
+PROCESSING_PASS_ALLOWED_STATUSES = {2, 4, 5}
+
 
 class TaxesStream(PrecoroStream):
     """Define custom stream."""
@@ -153,6 +156,13 @@ class InvoicesStream(ExternalIdTwoPassMixin, TransactionsStream):
         # Skip canceled invoices (else the processing-status pass re-fetches them forever)
         if row.get("status") == INVOICE_STATUS_CANCELED:
             self.logger.info(f"Invoice with id {row['id']} skipped because status=8 (canceled)")
+            return None
+        # Skip invoices that do not have allowed statuses
+        if getattr(self, "_fetch_processing_only", False) and row.get("status") not in PROCESSING_PASS_ALLOWED_STATUSES:
+            self.logger.info(
+                f"Invoice with id {row['id']} skipped because status={row.get('status')} "
+                "is not approved/partly_paid/paid (processing catch-up pass)"
+            )
             return None
 
         # Filter by perantIdn: only keep invoices where there are no parentIdn
